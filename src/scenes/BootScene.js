@@ -12,6 +12,9 @@ export default class BootScene extends Phaser.Scene {
     this.load.image('ice-tile', 'assets/ice-tile.png');
     this.load.image('mouse-hole', 'assets/mouse-hole.png');
     this.load.image('snowbank', 'assets/snowbank.png');
+
+    // Sound effects
+    this.load.audio('caught', 'assets/caught.wav');
   }
 
   create() {

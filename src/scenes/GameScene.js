@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import Mouse from '../entities/Mouse.js';
+import PolarBear from '../entities/PolarBear.js';
 import levels from '../levels.js';
 
 const TILE_SIZE = 48;
@@ -16,16 +17,22 @@ export default class GameScene extends Phaser.Scene {
   }
 
   create() {
-    const levelData = levels[this.currentLevel];
+    const level = levels[this.currentLevel];
+    const levelData = level.grid;
 
     // Track collectibles
     this.cheeseCollected = 0;
     this.totalCheese = 0;
     this.holeActive = false;
+    this.isResetting = false;
+
+    // Store cheese positions for respawn
+    this.cheesePositions = [];
 
     // Create groups
     this.snowbanks = this.physics.add.staticGroup();
     this.cheeses = this.physics.add.group();
+    this.bears = [];
 
     // Tile the ice background first
     for (let x = 0; x < 800; x += TILE_SIZE) {
@@ -35,8 +42,9 @@ export default class GameScene extends Phaser.Scene {
     }
 
     // Parse level and place objects
-    let mouseStartX = 400;
-    let mouseStartY = 300;
+    this.mouseStartX = 400;
+    this.mouseStartY = 300;
+    let bearIndex = 0;
 
     for (let row = 0; row < levelData.length; row++) {
       for (let col = 0; col < levelData[row].length; col++) {
@@ -49,41 +57,60 @@ export default class GameScene extends Phaser.Scene {
             this.snowbanks.create(x, y, 'snowbank');
             break;
           case 2: // Cheese
+            this.cheesePositions.push({ x, y });
             this.cheeses.create(x, y, 'cheese');
             this.totalCheese++;
             break;
           case 3: // Mouse hole
             this.mouseHole = this.physics.add.sprite(x, y, 'mouse-hole');
             this.mouseHole.body.setImmovable(true);
-            // Start small and faded
             this.mouseHole.setScale(0.5);
             this.mouseHole.setAlpha(0.3);
-            // Smaller hitbox - must be right on top to trigger
             this.mouseHole.body.setSize(12, 12);
             this.mouseHole.body.setOffset(10, 10);
             break;
           case 4: // Mouse start
-            mouseStartX = x;
-            mouseStartY = y;
+            this.mouseStartX = x;
+            this.mouseStartY = y;
             break;
-          case 5: // Polar bear start (placeholder for now)
-            // Bears will be added in a later prompt
+          case 5: // Polar bear
+            if (level.bears && level.bears[bearIndex]) {
+              const waypoints = level.bears[bearIndex];
+              const bear = new PolarBear(this, x, y, waypoints);
+              this.bears.push(bear);
+              bearIndex++;
+            }
             break;
         }
       }
     }
 
     // Create mouse at start position
-    this.mouse = new Mouse(this, mouseStartX, mouseStartY);
+    this.mouse = new Mouse(this, this.mouseStartX, this.mouseStartY);
 
     // Set up collisions
     this.physics.add.collider(this.mouse, this.snowbanks);
 
+    // Bear collisions with snowbanks (so they don't clip through)
+    this.bears.forEach(bear => {
+      this.physics.add.collider(bear, this.snowbanks);
+    });
+
     // Cheese collection
     this.physics.add.overlap(this.mouse, this.cheeses, this.collectCheese, null, this);
 
-    // Mouse hole overlap (only triggers when active)
+    // Mouse hole overlap
     this.physics.add.overlap(this.mouse, this.mouseHole, this.enterHole, null, this);
+
+    // Bear catches mouse
+    this.bears.forEach(bear => {
+      this.physics.add.overlap(this.mouse, bear, this.caughtByBear, null, this);
+    });
+
+    // Screen flash overlay (hidden initially)
+    this.flashOverlay = this.add.rectangle(400, 300, 800, 600, 0xff0000);
+    this.flashOverlay.setAlpha(0);
+    this.flashOverlay.setDepth(100);
 
     // HUD
     this.levelText = this.add.text(16, 4, `Level: ${this.currentLevel + 1}`, {
@@ -101,7 +128,6 @@ export default class GameScene extends Phaser.Scene {
     this.cheeseCollected++;
     this.cheeseText.setText(`Cheese: ${this.cheeseCollected}/${this.totalCheese}`);
 
-    // Check if all cheese collected
     if (this.cheeseCollected >= this.totalCheese) {
       this.activateHole();
     }
@@ -110,7 +136,6 @@ export default class GameScene extends Phaser.Scene {
   activateHole() {
     this.holeActive = true;
 
-    // Grow to full size
     this.tweens.add({
       targets: this.mouseHole,
       scale: 1,
@@ -118,7 +143,6 @@ export default class GameScene extends Phaser.Scene {
       duration: 300,
       ease: 'Back.easeOut',
       onComplete: () => {
-        // Then start pulsing
         this.tweens.add({
           targets: this.mouseHole,
           scale: { from: 1, to: 1.15 },
@@ -134,11 +158,9 @@ export default class GameScene extends Phaser.Scene {
   enterHole(mouse, hole) {
     if (!this.holeActive) return;
 
-    // Prevent multiple triggers
     this.holeActive = false;
     this.physics.pause();
 
-    // Quick shrink animation then transition
     this.tweens.add({
       targets: this.mouse,
       scale: 0,
@@ -152,7 +174,59 @@ export default class GameScene extends Phaser.Scene {
     });
   }
 
+  caughtByBear(mouse, bear) {
+    if (this.isResetting) return;
+    this.isResetting = true;
+
+    // Play caught sound
+    this.sound.play('caught');
+
+    // Flash screen red
+    this.tweens.add({
+      targets: this.flashOverlay,
+      alpha: { from: 0.6, to: 0 },
+      duration: 400,
+      ease: 'Power2'
+    });
+
+    // Brief pause then reset
+    this.time.delayedCall(300, () => {
+      this.resetLevel();
+    });
+  }
+
+  resetLevel() {
+    // Reset mouse position and velocity
+    this.mouse.setPosition(this.mouseStartX, this.mouseStartY);
+    this.mouse.body.setVelocity(0, 0);
+    this.mouse.setScale(1);
+
+    // Reset bears to starting positions
+    this.bears.forEach(bear => bear.reset());
+
+    // Respawn all cheese
+    this.cheeses.clear(true, true);
+    this.cheesePositions.forEach(pos => {
+      this.cheeses.create(pos.x, pos.y, 'cheese');
+    });
+
+    // Reset cheese counter
+    this.cheeseCollected = 0;
+    this.cheeseText.setText(`Cheese: 0/${this.totalCheese}`);
+
+    // Reset mouse hole
+    this.holeActive = false;
+    this.tweens.killTweensOf(this.mouseHole);
+    this.mouseHole.setScale(0.5);
+    this.mouseHole.setAlpha(0.3);
+
+    this.isResetting = false;
+  }
+
   update() {
-    this.mouse.update();
+    if (!this.isResetting) {
+      this.mouse.update();
+      this.bears.forEach(bear => bear.update());
+    }
   }
 }
