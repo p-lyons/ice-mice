@@ -41,6 +41,16 @@ export default class GameScene extends Phaser.Scene {
       }
     }
 
+    // Create particle emitter for ice scratch trails
+    this.trailParticles = this.add.particles(0, 0, 'ice-tile', {
+      scale: { start: 0.05, end: 0 },
+      alpha: { start: 0.4, end: 0 },
+      speed: { min: 10, max: 30 },
+      lifespan: 300,
+      frequency: -1, // Manual emission
+      tint: 0xffffff
+    });
+
     // Parse level and place objects
     this.mouseStartX = 400;
     this.mouseStartY = 300;
@@ -91,7 +101,7 @@ export default class GameScene extends Phaser.Scene {
     // Set up collisions
     this.physics.add.collider(this.mouse, this.snowbanks);
 
-    // Bear collisions with snowbanks (so they don't clip through)
+    // Bear collisions with snowbanks
     this.bears.forEach(bear => {
       this.physics.add.collider(bear, this.snowbanks);
     });
@@ -121,10 +131,30 @@ export default class GameScene extends Phaser.Scene {
       fontSize: '16px',
       color: '#ffdd00'
     });
+
+    // Track for slide sound
+    this.lastSlideSound = 0;
   }
 
   collectCheese(mouse, cheese) {
-    cheese.destroy();
+    // Disable body to prevent double collection
+    cheese.body.enable = false;
+
+    // Play cheese sound
+    this.sound.play('cheese');
+
+    // Pop animation before destroying
+    this.tweens.add({
+      targets: cheese,
+      scale: 1.5,
+      alpha: 0,
+      duration: 150,
+      ease: 'Back.easeIn',
+      onComplete: () => {
+        cheese.destroy();
+      }
+    });
+
     this.cheeseCollected++;
     this.cheeseText.setText(`Cheese: ${this.cheeseCollected}/${this.totalCheese}`);
 
@@ -135,6 +165,9 @@ export default class GameScene extends Phaser.Scene {
 
   activateHole() {
     this.holeActive = true;
+
+    // Play hole activate sound
+    this.sound.play('hole-activate');
 
     this.tweens.add({
       targets: this.mouseHole,
@@ -160,6 +193,9 @@ export default class GameScene extends Phaser.Scene {
 
     this.holeActive = false;
     this.physics.pause();
+
+    // Play level complete sound
+    this.sound.play('level-complete');
 
     this.tweens.add({
       targets: this.mouse,
@@ -223,10 +259,27 @@ export default class GameScene extends Phaser.Scene {
     this.isResetting = false;
   }
 
-  update() {
+  update(time) {
     if (!this.isResetting) {
       this.mouse.update();
       this.bears.forEach(bear => bear.update());
+
+      // Ice scratch trail particles when moving fast
+      const speed = Math.sqrt(
+        this.mouse.body.velocity.x ** 2 +
+        this.mouse.body.velocity.y ** 2
+      );
+
+      if (speed > 100) {
+        // Emit trail particles
+        this.trailParticles.emitParticle(1, this.mouse.x, this.mouse.y);
+
+        // Play slide sound occasionally when moving fast
+        if (speed > 150 && time - this.lastSlideSound > 400) {
+          this.sound.play('slide', { volume: 0.3 });
+          this.lastSlideSound = time;
+        }
+      }
     }
   }
 }
