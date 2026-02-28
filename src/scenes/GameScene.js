@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import Mouse from '../entities/Mouse.js';
 
 export default class GameScene extends Phaser.Scene {
   constructor() {
@@ -6,32 +7,18 @@ export default class GameScene extends Phaser.Scene {
   }
 
   create() {
-    console.log('GameScene started');
+    // Tile the ice background
+    for (let x = 0; x < 800; x += 48) {
+      for (let y = 0; y < 600; y += 48) {
+        this.add.image(x + 24, y + 24, 'ice-tile');
+      }
+    }
 
-    // Asset preview - temporary
-    this.add.text(400, 30, 'Asset Preview', {
-      fontSize: '24px',
-      color: '#ffffff'
-    }).setOrigin(0.5);
+    // Create mouse at center
+    this.mouse = new Mouse(this, 400, 300);
+  }
 
-    const assets = [
-      { key: 'mouse', label: 'Mouse (24x24)' },
-      { key: 'polar-bear', label: 'Polar Bear (40x40)' },
-      { key: 'cheese', label: 'Cheese (16x16)' },
-      { key: 'ice-tile', label: 'Ice Tile (48x48)' },
-      { key: 'mouse-hole', label: 'Mouse Hole (32x32)' },
-      { key: 'snowbank', label: 'Snowbank (48x48)' }
-    ];
-
-    assets.forEach((asset, i) => {
-      const x = 200 + (i % 3) * 200;
-      const y = 150 + Math.floor(i / 3) * 200;
-
-      this.add.image(x, y, asset.key);
-      this.add.text(x, y + 50, asset.label, {
-        fontSize: '14px',
-        color: '#aaaaaa'
-      }).setOrigin(0.5);
-    });
+  update() {
+    this.mouse.update();
   }
 }
