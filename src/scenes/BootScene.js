@@ -1,0 +1,20 @@
+import Phaser from 'phaser';
+
+export default class BootScene extends Phaser.Scene {
+  constructor() {
+    super('BootScene');
+  }
+
+  preload() {
+    this.load.image('mouse', 'assets/mouse.png');
+    this.load.image('polar-bear', 'assets/polar-bear.png');
+    this.load.image('cheese', 'assets/cheese.png');
+    this.load.image('ice-tile', 'assets/ice-tile.png');
+    this.load.image('mouse-hole', 'assets/mouse-hole.png');
+    this.load.image('snowbank', 'assets/snowbank.png');
+  }
+
+  create() {
+    this.scene.start('MenuScene');
+  }
+}
