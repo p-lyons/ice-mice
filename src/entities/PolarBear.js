@@ -8,6 +8,7 @@ export default class PolarBear extends Phaser.Physics.Arcade.Sprite {
     scene.physics.add.existing(this);
 
     this.body.setImmovable(true);
+    this.setAlpha(0.75); // Slightly transparent so player can see through
 
     // Patrol properties
     this.waypoints = waypoints;

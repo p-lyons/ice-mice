@@ -197,10 +197,117 @@ function createHoleActivateSound() {
   console.log('Created hole-activate.wav');
 }
 
+// Background music - simple chiptune loop
+function createBackgroundMusic() {
+  const sampleRate = 44100;
+  const bpm = 120;
+  const beatDuration = 60 / bpm;
+  const barDuration = beatDuration * 4;
+  const loopBars = 4;
+  const totalDuration = barDuration * loopBars;
+  const samples = [];
+
+  // Simple melody notes (C major pentatonic feel)
+  // Each bar has 8 eighth notes
+  const melody = [
+    // Bar 1
+    392, 0, 440, 0, 523, 0, 440, 0,
+    // Bar 2
+    392, 0, 330, 0, 392, 0, 440, 0,
+    // Bar 3
+    523, 0, 587, 0, 523, 0, 440, 0,
+    // Bar 4
+    392, 0, 330, 0, 294, 0, 330, 0
+  ];
+
+  // Bass notes (root notes, one per bar held)
+  const bass = [196, 196, 220, 165];
+
+  const eighthNoteDuration = beatDuration / 2;
+
+  for (let i = 0; i < sampleRate * totalDuration; i++) {
+    const t = i / sampleRate;
+    let sample = 0;
+
+    // Melody
+    const melodyIndex = Math.floor(t / eighthNoteDuration) % melody.length;
+    const freq = melody[melodyIndex];
+    if (freq > 0) {
+      const noteT = t % eighthNoteDuration;
+      const envelope = Math.exp(-noteT * 8) * 0.7;
+      // Square-ish wave for chiptune feel
+      const wave = Math.sin(2 * Math.PI * freq * t) > 0 ? 1 : -1;
+      sample += wave * envelope * 0.15;
+    }
+
+    // Bass
+    const barIndex = Math.floor(t / barDuration) % bass.length;
+    const bassFreq = bass[barIndex];
+    const bassWave = Math.sin(2 * Math.PI * bassFreq * t);
+    sample += bassWave * 0.1;
+
+    // Soft arpeggio layer
+    const arpFreqs = [262, 330, 392, 523];
+    const arpIndex = Math.floor(t / (beatDuration / 4)) % arpFreqs.length;
+    const arpT = t % (beatDuration / 4);
+    const arpEnv = Math.exp(-arpT * 12);
+    sample += Math.sin(2 * Math.PI * arpFreqs[arpIndex] * t) * arpEnv * 0.05;
+
+    samples.push(sample);
+  }
+
+  const buffer = createWav(samples, sampleRate);
+  fs.writeFileSync(path.join(ASSETS_DIR, 'music.wav'), buffer);
+  console.log('Created music.wav');
+}
+
+// Countdown beep
+function createCountdownBeep() {
+  const sampleRate = 44100;
+  const duration = 0.15;
+  const samples = [];
+
+  for (let i = 0; i < sampleRate * duration; i++) {
+    const t = i / sampleRate;
+    const progress = t / duration;
+    const freq = 440;
+    const envelope = Math.exp(-progress * 10);
+    const sample = Math.sin(2 * Math.PI * freq * t) * envelope * 0.4;
+    samples.push(sample);
+  }
+
+  const buffer = createWav(samples, sampleRate);
+  fs.writeFileSync(path.join(ASSETS_DIR, 'countdown.wav'), buffer);
+  console.log('Created countdown.wav');
+}
+
+// "Go!" sound - higher pitch
+function createGoSound() {
+  const sampleRate = 44100;
+  const duration = 0.25;
+  const samples = [];
+
+  for (let i = 0; i < sampleRate * duration; i++) {
+    const t = i / sampleRate;
+    const progress = t / duration;
+    const freq = 880;
+    const envelope = Math.exp(-progress * 6);
+    const sample = Math.sin(2 * Math.PI * freq * t) * envelope * 0.5;
+    samples.push(sample);
+  }
+
+  const buffer = createWav(samples, sampleRate);
+  fs.writeFileSync(path.join(ASSETS_DIR, 'go.wav'), buffer);
+  console.log('Created go.wav');
+}
+
 console.log('Generating sound effects...');
 createCaughtSound();
 createCheeseSound();
 createSlideSound();
 createLevelCompleteSound();
 createHoleActivateSound();
+createBackgroundMusic();
+createCountdownBeep();
+createGoSound();
 console.log('Done!');
