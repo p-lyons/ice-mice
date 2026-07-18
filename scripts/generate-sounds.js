@@ -197,88 +197,79 @@ function createHoleActivateSound() {
   console.log('Created hole-activate.wav');
 }
 
-// Background music - a bright frozen-tundra music box. Sparkly bell tones
-// on a major pentatonic (nothing downbeat can happen in pentatonic major),
-// a warm walking bass, high icicle twinkles, and soft snow-brush ticks.
+// Background music - "aurora over the tundra". Three arctic signatures:
+// an open-fifth drone (vast empty ice), a slow bell melody in C Lydian
+// (the raised 4th, F#, is the classic snowy-wonder sound - bright, never
+// sad), and a quiet glassy ostinato falling like snow. A soft wind swell
+// breathes underneath every couple of bars.
 function createBackgroundMusic() {
   const sampleRate = 44100;
-  const bpm = 132;
+  const bpm = 112;
   const beatDuration = 60 / bpm;
   const barDuration = beatDuration * 4;
   const loopBars = 8;
   const totalDuration = barDuration * loopBars;
-  const samples = [];
 
-  // Bell/glockenspiel melody in C major pentatonic, 8 eighths per bar.
-  // Two 4-bar phrases: a skipping call, then an answer that climbs at the
-  // end so the loop lands feeling like it's setting off again.
-  const E5 = 659, G5 = 784, A5 = 880, C5 = 523, D5 = 587;
-  const C6 = 1047, D6 = 1175, E6 = 1319;
-  const melody = [
-    // Bar 1
-    E5, 0, G5, 0, A5, 0, G5, 0,
-    // Bar 2
-    E5, 0, D5, 0, C5, 0, 0, 0,
-    // Bar 3
-    E5, 0, G5, 0, A5, 0, C6, 0,
-    // Bar 4
-    D6, 0, C6, 0, A5, 0, 0, 0,
-    // Bar 5
-    G5, 0, A5, 0, C6, 0, D6, 0,
-    // Bar 6
-    E6, 0, D6, 0, C6, 0, A5, 0,
-    // Bar 7
-    G5, E5, G5, 0, A5, C6, A5, 0,
-    // Bar 8 - rising send-off into the loop
-    C6, 0, D6, 0, E6, 0, 0, 0
+  // C Lydian tones
+  const C5 = 523, D5 = 587, E5 = 659, Fs5 = 740, G5 = 784, A5 = 880, B5 = 988;
+  const C6 = 1047, B5h = 988, D6 = 1175, E6 = 1319, G6 = 1568;
+
+  // Sparse, sustained melody: [bar, beat, freq]. Long ringing bells with
+  // space between them - glacial but luminous. F# and B over the C-G drone
+  // make the "shimmer" chords; the phrase settles home on E (warm 3rd).
+  const melodyEvents = [
+    [0, 0, G5], [0, 3, E5],
+    [1, 0, Fs5], [1, 3, D5],
+    [2, 0, E5], [2, 2, G5], [2, 3, A5],
+    [3, 0, B5],
+    [4, 0, C6], [4, 2, B5h], [4, 3, A5],
+    [5, 0, G5], [5, 2, E5], [5, 3, Fs5],
+    [6, 0, A5], [6, 2, G5], [6, 3, D5],
+    [7, 0, E5]
+    // bar 8 tail is left empty so the last bell decays cleanly into the loop
   ];
+  const noteOns = melodyEvents.map(([bar, beat, freq]) => ({
+    start: bar * barDuration + beat * beatDuration,
+    freq
+  }));
 
-  // Warm bass roots: C - Am - F - G, twice around
-  const bass = [131, 110, 87, 98, 131, 110, 87, 98];
+  // Glassy snowfall ostinato: quiet descending 8th-note cycle, high register
+  const ostinato = [G6, E6, D6, B5h];
+  const eighthDuration = beatDuration / 2;
 
-  // High icicle twinkles cycling on the offbeats
-  const twinkles = [2093, 1568, 1760, 2637];
-
-  const eighthNoteDuration = beatDuration / 2;
-
+  const samples = [];
   for (let i = 0; i < sampleRate * totalDuration; i++) {
     const t = i / sampleRate;
     let sample = 0;
 
-    // Melody: bell timbre = fundamental + soft 2nd/3rd harmonics, fast decay
-    const melodyIndex = Math.floor(t / eighthNoteDuration) % melody.length;
-    const freq = melody[melodyIndex];
-    if (freq > 0) {
-      const noteT = t % eighthNoteDuration;
-      const envelope = Math.exp(-noteT * 6) * Math.min(1, noteT * 200);
+    // Open-fifth drone (C3 + G3), slowly breathing - the vast tundra
+    const breathe = 0.8 + 0.2 * Math.sin((2 * Math.PI * t) / (barDuration * 2));
+    sample += Math.sin(2 * Math.PI * 131 * t) * 0.055 * breathe;
+    sample += Math.sin(2 * Math.PI * 196 * t) * 0.04 * breathe;
+
+    // Melody bells: ring long past their beat (decay ~2s)
+    for (const note of noteOns) {
+      const noteT = t - note.start;
+      if (noteT < 0 || noteT > 2) continue;
+      const envelope = Math.exp(-noteT * 2.5) * Math.min(1, noteT * 120);
       const bell =
-        Math.sin(2 * Math.PI * freq * noteT) +
-        Math.sin(2 * Math.PI * freq * 2 * noteT) * 0.4 +
-        Math.sin(2 * Math.PI * freq * 3 * noteT) * 0.15;
-      sample += bell * envelope * 0.16;
+        Math.sin(2 * Math.PI * note.freq * noteT) +
+        Math.sin(2 * Math.PI * note.freq * 2 * noteT) * 0.35 +
+        Math.sin(2 * Math.PI * note.freq * 3 * noteT) * 0.1;
+      sample += bell * envelope * 0.14;
     }
 
-    // Bass: gentle sine with a slow pluck per bar
-    const barIndex = Math.floor(t / barDuration) % bass.length;
-    const barT = t % barDuration;
-    const bassEnv = Math.exp(-barT * 0.8) * 0.5 + 0.5;
-    sample += Math.sin(2 * Math.PI * bass[barIndex] * t) * bassEnv * 0.09;
+    // Snowfall ostinato: every 8th note, very quiet and quick to fade
+    const eighthIndex = Math.floor(t / eighthDuration);
+    const eighthT = t - eighthIndex * eighthDuration;
+    const ostFreq = ostinato[eighthIndex % ostinato.length];
+    const ostEnv = Math.exp(-eighthT * 9) * Math.min(1, eighthT * 300);
+    sample += Math.sin(2 * Math.PI * ostFreq * eighthT) * ostEnv * 0.035;
 
-    // Icicle twinkle on beats 2 and 4 (the sparkle that says "frozen")
-    const beatInBar = Math.floor(barT / beatDuration);
-    if (beatInBar === 1 || beatInBar === 3) {
-      const beatT = barT % beatDuration;
-      const twinkleFreq = twinkles[(barIndex + beatInBar) % twinkles.length];
-      const twinkleEnv = Math.exp(-beatT * 14);
-      sample += Math.sin(2 * Math.PI * twinkleFreq * beatT) * twinkleEnv * 0.05;
-    }
-
-    // Snow-brush tick on every offbeat eighth: a whisper of noise
-    const eighthT = t % eighthNoteDuration;
-    const eighthIndex = Math.floor(t / eighthNoteDuration) % 2;
-    if (eighthIndex === 1) {
-      sample += (Math.random() - 0.5) * Math.exp(-eighthT * 60) * 0.045;
-    }
+    // Arctic wind: a soft noise swell cresting once every two bars
+    const windPhase = (t % (barDuration * 2)) / (barDuration * 2);
+    const windEnv = Math.pow(Math.sin(Math.PI * windPhase), 3) * 0.018;
+    sample += (Math.random() - 0.5) * windEnv;
 
     samples.push(sample);
   }
