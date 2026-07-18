@@ -197,31 +197,47 @@ function createHoleActivateSound() {
   console.log('Created hole-activate.wav');
 }
 
-// Background music - simple chiptune loop
+// Background music - a bright frozen-tundra music box. Sparkly bell tones
+// on a major pentatonic (nothing downbeat can happen in pentatonic major),
+// a warm walking bass, high icicle twinkles, and soft snow-brush ticks.
 function createBackgroundMusic() {
   const sampleRate = 44100;
-  const bpm = 120;
+  const bpm = 132;
   const beatDuration = 60 / bpm;
   const barDuration = beatDuration * 4;
-  const loopBars = 4;
+  const loopBars = 8;
   const totalDuration = barDuration * loopBars;
   const samples = [];
 
-  // Simple melody notes (C major pentatonic feel)
-  // Each bar has 8 eighth notes
+  // Bell/glockenspiel melody in C major pentatonic, 8 eighths per bar.
+  // Two 4-bar phrases: a skipping call, then an answer that climbs at the
+  // end so the loop lands feeling like it's setting off again.
+  const E5 = 659, G5 = 784, A5 = 880, C5 = 523, D5 = 587;
+  const C6 = 1047, D6 = 1175, E6 = 1319;
   const melody = [
     // Bar 1
-    392, 0, 440, 0, 523, 0, 440, 0,
+    E5, 0, G5, 0, A5, 0, G5, 0,
     // Bar 2
-    392, 0, 330, 0, 392, 0, 440, 0,
+    E5, 0, D5, 0, C5, 0, 0, 0,
     // Bar 3
-    523, 0, 587, 0, 523, 0, 440, 0,
+    E5, 0, G5, 0, A5, 0, C6, 0,
     // Bar 4
-    392, 0, 330, 0, 294, 0, 330, 0
+    D6, 0, C6, 0, A5, 0, 0, 0,
+    // Bar 5
+    G5, 0, A5, 0, C6, 0, D6, 0,
+    // Bar 6
+    E6, 0, D6, 0, C6, 0, A5, 0,
+    // Bar 7
+    G5, E5, G5, 0, A5, C6, A5, 0,
+    // Bar 8 - rising send-off into the loop
+    C6, 0, D6, 0, E6, 0, 0, 0
   ];
 
-  // Bass notes (root notes, one per bar held)
-  const bass = [196, 196, 220, 165];
+  // Warm bass roots: C - Am - F - G, twice around
+  const bass = [131, 110, 87, 98, 131, 110, 87, 98];
+
+  // High icicle twinkles cycling on the offbeats
+  const twinkles = [2093, 1568, 1760, 2637];
 
   const eighthNoteDuration = beatDuration / 2;
 
@@ -229,29 +245,40 @@ function createBackgroundMusic() {
     const t = i / sampleRate;
     let sample = 0;
 
-    // Melody
+    // Melody: bell timbre = fundamental + soft 2nd/3rd harmonics, fast decay
     const melodyIndex = Math.floor(t / eighthNoteDuration) % melody.length;
     const freq = melody[melodyIndex];
     if (freq > 0) {
       const noteT = t % eighthNoteDuration;
-      const envelope = Math.exp(-noteT * 8) * 0.7;
-      // Square-ish wave for chiptune feel
-      const wave = Math.sin(2 * Math.PI * freq * t) > 0 ? 1 : -1;
-      sample += wave * envelope * 0.15;
+      const envelope = Math.exp(-noteT * 6) * Math.min(1, noteT * 200);
+      const bell =
+        Math.sin(2 * Math.PI * freq * noteT) +
+        Math.sin(2 * Math.PI * freq * 2 * noteT) * 0.4 +
+        Math.sin(2 * Math.PI * freq * 3 * noteT) * 0.15;
+      sample += bell * envelope * 0.16;
     }
 
-    // Bass
+    // Bass: gentle sine with a slow pluck per bar
     const barIndex = Math.floor(t / barDuration) % bass.length;
-    const bassFreq = bass[barIndex];
-    const bassWave = Math.sin(2 * Math.PI * bassFreq * t);
-    sample += bassWave * 0.1;
+    const barT = t % barDuration;
+    const bassEnv = Math.exp(-barT * 0.8) * 0.5 + 0.5;
+    sample += Math.sin(2 * Math.PI * bass[barIndex] * t) * bassEnv * 0.09;
 
-    // Soft arpeggio layer
-    const arpFreqs = [262, 330, 392, 523];
-    const arpIndex = Math.floor(t / (beatDuration / 4)) % arpFreqs.length;
-    const arpT = t % (beatDuration / 4);
-    const arpEnv = Math.exp(-arpT * 12);
-    sample += Math.sin(2 * Math.PI * arpFreqs[arpIndex] * t) * arpEnv * 0.05;
+    // Icicle twinkle on beats 2 and 4 (the sparkle that says "frozen")
+    const beatInBar = Math.floor(barT / beatDuration);
+    if (beatInBar === 1 || beatInBar === 3) {
+      const beatT = barT % beatDuration;
+      const twinkleFreq = twinkles[(barIndex + beatInBar) % twinkles.length];
+      const twinkleEnv = Math.exp(-beatT * 14);
+      sample += Math.sin(2 * Math.PI * twinkleFreq * beatT) * twinkleEnv * 0.05;
+    }
+
+    // Snow-brush tick on every offbeat eighth: a whisper of noise
+    const eighthT = t % eighthNoteDuration;
+    const eighthIndex = Math.floor(t / eighthNoteDuration) % 2;
+    if (eighthIndex === 1) {
+      sample += (Math.random() - 0.5) * Math.exp(-eighthT * 60) * 0.045;
+    }
 
     samples.push(sample);
   }
@@ -301,6 +328,334 @@ function createGoSound() {
   console.log('Created go.wav');
 }
 
+// Ice cracking sound - short sharp crack
+function createCrackSound() {
+  const sampleRate = 44100;
+  const duration = 0.15;
+  const samples = [];
+
+  for (let i = 0; i < sampleRate * duration; i++) {
+    const t = i / sampleRate;
+    const progress = t / duration;
+
+    // Sharp attack with fast decay
+    const envelope = Math.exp(-progress * 20);
+
+    // Mix of noise and low frequency for impact
+    const noise = (Math.random() - 0.5) * envelope;
+    const crack = Math.sin(2 * Math.PI * 150 * t) * envelope * 0.5;
+    const pop = Math.sin(2 * Math.PI * 400 * t) * Math.exp(-progress * 30) * 0.3;
+
+    const sample = (noise * 0.6 + crack + pop) * 0.5;
+    samples.push(sample);
+  }
+
+  const buffer = createWav(samples, sampleRate);
+  fs.writeFileSync(path.join(ASSETS_DIR, 'crack.wav'), buffer);
+  console.log('Created crack.wav');
+}
+
+// Ice splash/shatter sound - breaking through ice into water
+function createSplashSound() {
+  const sampleRate = 44100;
+  const duration = 0.4;
+  const samples = [];
+
+  for (let i = 0; i < sampleRate * duration; i++) {
+    const t = i / sampleRate;
+    const progress = t / duration;
+
+    // Initial crack/shatter
+    const crackEnv = Math.exp(-progress * 15);
+    const crack = (Math.random() - 0.5) * crackEnv * 0.8;
+
+    // Splash component (delayed slightly)
+    const splashDelay = Math.max(0, t - 0.05);
+    const splashProgress = splashDelay / (duration - 0.05);
+    const splashEnv = Math.sin(splashProgress * Math.PI) * 0.6;
+
+    // Filtered noise for water splash
+    let splash = 0;
+    for (let j = 0; j < 3; j++) {
+      splash += Math.sin(2 * Math.PI * (100 + j * 80 + splashProgress * 50) * t);
+    }
+    splash = splash / 3 * splashEnv;
+
+    // Bubbles (high frequency bursts)
+    const bubbles = Math.sin(2 * Math.PI * 800 * t) * Math.random() * Math.exp(-progress * 8) * 0.2;
+
+    const sample = (crack + splash * 0.4 + bubbles) * 0.5;
+    samples.push(sample);
+  }
+
+  const buffer = createWav(samples, sampleRate);
+  fs.writeFileSync(path.join(ASSETS_DIR, 'splash.wav'), buffer);
+  console.log('Created splash.wav');
+}
+
+// Squeak - quick chirp for wall bonks
+function createSqueakSound() {
+  const sampleRate = 44100;
+  const duration = 0.12;
+  const samples = [];
+
+  for (let i = 0; i < sampleRate * duration; i++) {
+    const t = i / sampleRate;
+    const progress = t / duration;
+
+    // Fast rising then falling pitch, like a rubber toy
+    const freq = 1400 + Math.sin(progress * Math.PI) * 900;
+    const envelope = Math.sin(progress * Math.PI) * Math.exp(-progress * 3);
+    const sample = Math.sin(2 * Math.PI * freq * t) * envelope * 0.35;
+    samples.push(sample);
+  }
+
+  const buffer = createWav(samples, sampleRate);
+  fs.writeFileSync(path.join(ASSETS_DIR, 'squeak.wav'), buffer);
+  console.log('Created squeak.wav');
+}
+
+// Boing - springy wobble for the caught-gag fling
+function createBoingSound() {
+  const sampleRate = 44100;
+  const duration = 0.45;
+  const samples = [];
+
+  for (let i = 0; i < sampleRate * duration; i++) {
+    const t = i / sampleRate;
+    const progress = t / duration;
+
+    // Descending base with a wobbling vibrato = cartoon spring
+    const baseFreq = 380 - progress * 180;
+    const wobble = Math.sin(2 * Math.PI * 18 * t) * 60 * (1 - progress);
+    const freq = baseFreq + wobble;
+    const envelope = Math.exp(-progress * 5);
+    const sample = Math.sin(2 * Math.PI * freq * t) * envelope * 0.45;
+    samples.push(sample);
+  }
+
+  const buffer = createWav(samples, sampleRate);
+  fs.writeFileSync(path.join(ASSETS_DIR, 'boing.wav'), buffer);
+  console.log('Created boing.wav');
+}
+
+// Golden cheese - sparkly ascending arpeggio, fancier than normal cheese
+function createGoldenSound() {
+  const sampleRate = 44100;
+  const notes = [784, 988, 1175, 1568]; // G5 B5 D6 G6
+  const noteDuration = 0.08;
+  const totalDuration = notes.length * noteDuration + 0.25;
+  const samples = [];
+
+  for (let i = 0; i < sampleRate * totalDuration; i++) {
+    const t = i / sampleRate;
+    let sample = 0;
+
+    for (let n = 0; n < notes.length; n++) {
+      const noteStart = n * noteDuration;
+      const noteTime = t - noteStart;
+      if (noteTime >= 0 && noteTime < 0.25) {
+        const envelope = Math.exp(-noteTime * 10) * Math.min(1, noteTime * 80);
+        const tone = Math.sin(2 * Math.PI * notes[n] * noteTime);
+        const shimmer = Math.sin(2 * Math.PI * notes[n] * 2 * noteTime) * 0.4;
+        sample += (tone + shimmer) * envelope * 0.3;
+      }
+    }
+
+    samples.push(sample);
+  }
+
+  const buffer = createWav(samples, sampleRate);
+  fs.writeFileSync(path.join(ASSETS_DIR, 'golden.wav'), buffer);
+  console.log('Created golden.wav');
+}
+
+// Boost - rising whoosh for speed streaks
+function createBoostSound() {
+  const sampleRate = 44100;
+  const duration = 0.3;
+  const samples = [];
+
+  for (let i = 0; i < sampleRate * duration; i++) {
+    const t = i / sampleRate;
+    const progress = t / duration;
+
+    // Rising swept tone plus airy noise
+    const freq = 200 + progress * 700;
+    const envelope = Math.sin(progress * Math.PI) * 0.6;
+    const tone = Math.sin(2 * Math.PI * freq * t) * 0.5;
+    const noise = (Math.random() - 0.5) * 0.5;
+    const sample = (tone + noise * 0.5) * envelope * 0.5;
+    samples.push(sample);
+  }
+
+  const buffer = createWav(samples, sampleRate);
+  fs.writeFileSync(path.join(ASSETS_DIR, 'boost.wav'), buffer);
+  console.log('Created boost.wav');
+}
+
+// Wheee - slide-whistle up for cheese combos
+function createWheeeSound() {
+  const sampleRate = 44100;
+  const duration = 0.35;
+  const samples = [];
+
+  for (let i = 0; i < sampleRate * duration; i++) {
+    const t = i / sampleRate;
+    const progress = t / duration;
+
+    // Slide whistle: smooth pitch sweep upward
+    const freq = 500 + progress * progress * 1100;
+    const envelope = Math.sin(progress * Math.PI) * 0.7;
+    const tone = Math.sin(2 * Math.PI * freq * t);
+    const breathy = Math.sin(2 * Math.PI * freq * 1.01 * t) * 0.3;
+    const sample = (tone + breathy) * envelope * 0.35;
+    samples.push(sample);
+  }
+
+  const buffer = createWav(samples, sampleRate);
+  fs.writeFileSync(path.join(ASSETS_DIR, 'wheee.wav'), buffer);
+  console.log('Created wheee.wav');
+}
+
+// Warp - quick zip up-then-down for burrow travel
+function createWarpSound() {
+  const sampleRate = 44100;
+  const duration = 0.3;
+  const samples = [];
+
+  for (let i = 0; i < sampleRate * duration; i++) {
+    const t = i / sampleRate;
+    const progress = t / duration;
+
+    // Pitch zips up then dives - "into the tunnel and out the other side"
+    const freq = progress < 0.5
+      ? 400 + progress * 2 * 1200
+      : 1600 - (progress - 0.5) * 2 * 1000;
+    const envelope = Math.sin(progress * Math.PI) * 0.7;
+    const tone = Math.sin(2 * Math.PI * freq * t);
+    const sparkle = Math.sin(2 * Math.PI * freq * 2.02 * t) * 0.25;
+    samples.push((tone + sparkle) * envelope * 0.4);
+  }
+
+  const buffer = createWav(samples, sampleRate);
+  fs.writeFileSync(path.join(ASSETS_DIR, 'warp.wav'), buffer);
+  console.log('Created warp.wav');
+}
+
+// Yip - two quick fox chirps for the pounce telegraph
+function createYipSound() {
+  const sampleRate = 44100;
+  const duration = 0.3;
+  const samples = [];
+
+  for (let i = 0; i < sampleRate * duration; i++) {
+    const t = i / sampleRate;
+    let sample = 0;
+
+    // Two short falling chirps
+    for (const start of [0, 0.15]) {
+      const nt = t - start;
+      if (nt >= 0 && nt < 0.1) {
+        const p = nt / 0.1;
+        const freq = 1100 - p * 400;
+        const envelope = Math.sin(p * Math.PI) * Math.exp(-p * 2);
+        sample += Math.sin(2 * Math.PI * freq * nt) * envelope * 0.4;
+      }
+    }
+    samples.push(sample);
+  }
+
+  const buffer = createWav(samples, sampleRate);
+  fs.writeFileSync(path.join(ASSETS_DIR, 'yip.wav'), buffer);
+  console.log('Created yip.wav');
+}
+
+// Plug - deep thunk then a frosty shimmer (ice block seals a water hole)
+function createPlugSound() {
+  const sampleRate = 44100;
+  const duration = 0.5;
+  const samples = [];
+
+  for (let i = 0; i < sampleRate * duration; i++) {
+    const t = i / sampleRate;
+    const progress = t / duration;
+
+    // Deep thunk at the start
+    const thunkEnv = Math.exp(-progress * 18);
+    const thunk = Math.sin(2 * Math.PI * 120 * t) * thunkEnv * 0.7;
+    const impact = (Math.random() - 0.5) * Math.exp(-progress * 30) * 0.4;
+
+    // Rising freeze shimmer after the thunk
+    const shimmerDelay = Math.max(0, t - 0.12);
+    const sp = shimmerDelay / (duration - 0.12);
+    const shimmerEnv = Math.sin(Math.min(1, sp) * Math.PI) * 0.3;
+    const shimmer = (
+      Math.sin(2 * Math.PI * (900 + sp * 500) * t) +
+      Math.sin(2 * Math.PI * (1350 + sp * 500) * t) * 0.6
+    ) * shimmerEnv * 0.25;
+
+    samples.push((thunk + impact + shimmer) * 0.6);
+  }
+
+  const buffer = createWav(samples, sampleRate);
+  fs.writeFileSync(path.join(ASSETS_DIR, 'plug.wav'), buffer);
+  console.log('Created plug.wav');
+}
+
+// Chime - warm three-note hello for the fish delivery
+function createChimeSound() {
+  const sampleRate = 44100;
+  const notes = [659, 831, 988]; // E5 Ab5 B5 - warm major feel
+  const noteDuration = 0.1;
+  const totalDuration = notes.length * noteDuration + 0.3;
+  const samples = [];
+
+  for (let i = 0; i < sampleRate * totalDuration; i++) {
+    const t = i / sampleRate;
+    let sample = 0;
+
+    for (let n = 0; n < notes.length; n++) {
+      const noteTime = t - n * noteDuration;
+      if (noteTime >= 0 && noteTime < 0.3) {
+        const envelope = Math.exp(-noteTime * 7) * Math.min(1, noteTime * 60);
+        const tone = Math.sin(2 * Math.PI * notes[n] * noteTime);
+        const warm = Math.sin(2 * Math.PI * notes[n] * 0.5 * noteTime) * 0.3;
+        sample += (tone + warm) * envelope * 0.3;
+      }
+    }
+    samples.push(sample);
+  }
+
+  const buffer = createWav(samples, sampleRate);
+  fs.writeFileSync(path.join(ASSETS_DIR, 'chime.wav'), buffer);
+  console.log('Created chime.wav');
+}
+
+// Spin - accelerating whirl for the spinner tile
+function createSpinSound() {
+  const sampleRate = 44100;
+  const duration = 0.6;
+  const samples = [];
+
+  for (let i = 0; i < sampleRate * duration; i++) {
+    const t = i / sampleRate;
+    const progress = t / duration;
+
+    // Wobble that speeds up as the spin accelerates
+    const wobbleRate = 6 + progress * 22;
+    const freq = 500 + Math.sin(2 * Math.PI * wobbleRate * t) * 150 + progress * 200;
+    const envelope = Math.sin(progress * Math.PI) * 0.6;
+    const tone = Math.sin(2 * Math.PI * freq * t);
+    const air = (Math.random() - 0.5) * 0.2;
+    samples.push((tone + air) * envelope * 0.4);
+  }
+
+  const buffer = createWav(samples, sampleRate);
+  fs.writeFileSync(path.join(ASSETS_DIR, 'spin.wav'), buffer);
+  console.log('Created spin.wav');
+}
+
 console.log('Generating sound effects...');
 createCaughtSound();
 createCheeseSound();
@@ -310,4 +665,16 @@ createHoleActivateSound();
 createBackgroundMusic();
 createCountdownBeep();
 createGoSound();
+createCrackSound();
+createSplashSound();
+createSqueakSound();
+createBoingSound();
+createGoldenSound();
+createBoostSound();
+createWheeeSound();
+createWarpSound();
+createYipSound();
+createPlugSound();
+createChimeSound();
+createSpinSound();
 console.log('Done!');

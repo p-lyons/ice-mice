@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { recordLevelResult } from '../progress.js';
 
 export default class LevelCompleteScene extends Phaser.Scene {
   constructor() {
@@ -10,6 +11,14 @@ export default class LevelCompleteScene extends Phaser.Scene {
     this.totalLevels = data.totalLevels;
     this.totalResets = data.totalResets || 0;
     this.startTime = data.startTime;
+    this.goldenCollected = !!data.goldenCollected;
+    this.mode = data.mode || 'adventure';
+    this.p1Score = data.p1Score || 0;
+    this.p2Score = data.p2Score || 0;
+    this.runTime = data.runTime || null;
+    this.newBest = !!data.newBest;
+    this.customLevel = data.customLevel || null;
+    this.fromEditor = !!data.fromEditor;
   }
 
   create() {
@@ -27,6 +36,19 @@ export default class LevelCompleteScene extends Phaser.Scene {
     // Dark overlay
     this.add.rectangle(width / 2, height / 2, width, height, 0x000000, 0.6);
 
+    if (this.mode === 'chase') {
+      this.showChaseResults();
+      return;
+    }
+
+    if (this.customLevel) {
+      this.showCustomComplete();
+      return;
+    }
+
+    // Save progress (beaten + golden star) for the level select screen
+    recordLevelResult(this.completedLevel, this.goldenCollected);
+
     if (hasMoreLevels) {
       this.showLevelComplete(nextLevel);
     } else {
@@ -34,11 +56,134 @@ export default class LevelCompleteScene extends Phaser.Scene {
     }
   }
 
+  // Cheese Chase results: winner, scores, rematch
+  showChaseResults() {
+    const { width, height } = this.scale;
+    const p1 = this.p1Score;
+    const p2 = this.p2Score;
+    const tie = p1 === p2;
+    const winnerTexture = p1 >= p2 ? 'mouse' : 'mouse2';
+
+    const title = this.add.text(width / 2, height / 2 - 130,
+      tie ? "It's a tie!" : (p1 > p2 ? 'Player 1 wins!' : 'Player 2 wins!'), {
+        fontSize: '52px',
+        fontFamily: 'Arial',
+        color: '#ffdd00',
+        fontStyle: 'bold'
+      }).setOrigin(0.5);
+
+    this.tweens.add({
+      targets: title,
+      scale: { from: 0, to: 1 },
+      duration: 400,
+      ease: 'Back.easeOut'
+    });
+
+    // The champion mouse (or both, for a tie) does a victory wiggle
+    if (tie) {
+      this.spinMouse(width / 2 - 40, height / 2 - 40, 'mouse');
+      this.spinMouse(width / 2 + 40, height / 2 - 40, 'mouse2');
+    } else {
+      this.spinMouse(width / 2, height / 2 - 40, winnerTexture);
+    }
+
+    // Scoreboard
+    this.add.image(width / 2 - 90, height / 2 + 40, 'mouse').setScale(1.3);
+    this.add.text(width / 2 - 60, height / 2 + 40, String(p1), {
+      fontSize: '36px', fontFamily: 'Arial', color: '#ffffff', fontStyle: 'bold'
+    }).setOrigin(0.5);
+    this.add.image(width / 2, height / 2 + 40, 'cheese').setScale(1.4);
+    this.add.text(width / 2 + 60, height / 2 + 40, String(p2), {
+      fontSize: '36px', fontFamily: 'Arial', color: '#e8b888', fontStyle: 'bold'
+    }).setOrigin(0.5);
+    this.add.image(width / 2 + 90, height / 2 + 40, 'mouse2').setScale(1.3);
+
+    // Buttons: rematch, next pond, menu
+    this.chaseButton(width / 2 - 170, height / 2 + 130, 'Rematch', () => {
+      this.scene.start('GameScene', {
+        level: this.completedLevel, players: 2, mode: 'chase', continuing: true
+      });
+    });
+    this.chaseButton(width / 2, height / 2 + 130, 'Next Pond', () => {
+      this.scene.start('GameScene', {
+        level: (this.completedLevel + 1) % this.totalLevels,
+        players: 2, mode: 'chase', continuing: true
+      });
+    });
+    this.chaseButton(width / 2 + 170, height / 2 + 130, 'Menu', () => {
+      this.scene.start('MenuScene');
+    });
+  }
+
+  spinMouse(x, y, texture) {
+    const champ = this.add.image(x, y, texture).setScale(2.2);
+    this.tweens.add({
+      targets: champ,
+      angle: { from: -15, to: 15 },
+      duration: 250,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
+    });
+  }
+
+  chaseButton(x, y, label, callback) {
+    const btn = this.add.text(x, y, label, {
+      fontSize: '24px',
+      fontFamily: 'Arial',
+      color: '#00ff00',
+      backgroundColor: '#333333',
+      padding: { x: 16, y: 10 }
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+    btn.on('pointerover', () => btn.setStyle({ color: '#ffff00' }));
+    btn.on('pointerout', () => btn.setStyle({ color: '#00ff00' }));
+    btn.on('pointerdown', callback);
+    return btn;
+  }
+
+  // A painted level was beaten - no saved progress, offer replay/painter
+  showCustomComplete() {
+    const { width, height } = this.scale;
+
+    const title = this.add.text(width / 2, height / 2 - 90, 'You made it!', {
+      fontSize: '56px',
+      fontFamily: 'Arial',
+      color: '#00ff00',
+      fontStyle: 'bold'
+    }).setOrigin(0.5);
+
+    this.tweens.add({
+      targets: title,
+      scale: { from: 0, to: 1 },
+      duration: 400,
+      ease: 'Back.easeOut'
+    });
+
+    this.add.text(width / 2, height / 2 - 35,
+      `"${(this.customLevel.name || 'Mystery Pond').slice(0, 28)}" cleared!`, {
+        fontSize: '24px', fontFamily: 'Arial', color: '#c0e8ff', fontStyle: 'italic'
+      }).setOrigin(0.5);
+
+    this.chaseButton(width / 2 - 150, height / 2 + 60, 'Play Again', () => {
+      this.scene.start('GameScene', {
+        customLevel: this.customLevel, players: 1, fromEditor: this.fromEditor, continuing: true
+      });
+    });
+    if (this.fromEditor) {
+      this.chaseButton(width / 2, height / 2 + 60, 'Painter', () => {
+        this.scene.start('EditorScene', { level: this.customLevel });
+      });
+    }
+    this.chaseButton(width / 2 + 150, height / 2 + 60, 'Menu', () => {
+      this.scene.start('MenuScene');
+    });
+  }
+
   showLevelComplete(nextLevel) {
     const { width, height } = this.scale;
 
     // Title
-    const title = this.add.text(width / 2, height / 2 - 60, 'Level Complete!', {
+    const title = this.add.text(width / 2, height / 2 - 70, 'Level Complete!', {
       fontSize: '52px',
       fontFamily: 'Arial',
       color: '#00ff00',
@@ -54,17 +199,57 @@ export default class LevelCompleteScene extends Phaser.Scene {
     });
 
     // Level cleared text
-    this.add.text(width / 2, height / 2, `Level ${this.completedLevel + 1} cleared!`, {
+    this.add.text(width / 2, height / 2 - 10, `Level ${this.completedLevel + 1} cleared!`, {
       fontSize: '28px',
       fontFamily: 'Arial',
       color: '#ffffff'
     }).setOrigin(0.5);
 
+    // Ghost race time (solo runs)
+    if (this.runTime !== null) {
+      const timeStr = `${(this.runTime / 1000).toFixed(1)}s`;
+      const timeText = this.add.text(width / 2, height / 2 + 165,
+        this.newBest ? `${timeStr} - New best! Your ghost learned this run.` : `Time: ${timeStr}`, {
+          fontSize: '18px',
+          fontFamily: 'Arial',
+          color: this.newBest ? '#66ddff' : '#88aacc',
+          fontStyle: this.newBest ? 'bold' : 'normal'
+        }).setOrigin(0.5);
+      if (this.newBest) {
+        this.tweens.add({
+          targets: timeText,
+          scale: { from: 1.15, to: 1 },
+          duration: 350,
+          ease: 'Back.easeOut'
+        });
+      }
+    }
+
     // Cheese icon
-    this.add.image(width / 2 - 30, height / 2 + 40, 'cheese').setScale(1.2);
+    this.add.image(width / 2 - 30, height / 2 + 30, 'cheese').setScale(1.2);
+
+    // Golden cheese star callout
+    if (this.goldenCollected) {
+      const star = this.add.image(width / 2 + 30, height / 2 + 30, 'star').setScale(1.4);
+      this.tweens.add({
+        targets: star,
+        angle: { from: -15, to: 15 },
+        duration: 400,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut'
+      });
+      this.add.text(width / 2, height / 2 + 62, 'You found the golden cheese!', {
+        fontSize: '20px',
+        fontFamily: 'Arial',
+        color: '#ffd700',
+        fontStyle: 'bold'
+      }).setOrigin(0.5);
+    }
 
     // Countdown text
-    this.countdownText = this.add.text(width / 2, height / 2 + 100, 'Next level in 2...', {
+    const countdownY = this.goldenCollected ? height / 2 + 105 : height / 2 + 90;
+    this.countdownText = this.add.text(width / 2, countdownY, 'Next level in 2...', {
       fontSize: '20px',
       fontFamily: 'Arial',
       color: '#aaaaaa'
@@ -97,7 +282,7 @@ export default class LevelCompleteScene extends Phaser.Scene {
     });
 
     // Press any key hint
-    this.add.text(width / 2, height / 2 + 140, '(Press any key to continue)', {
+    this.add.text(width / 2, countdownY + 35, '(Press any key to continue)', {
       fontSize: '16px',
       fontFamily: 'Arial',
       color: '#666666'
@@ -118,6 +303,30 @@ export default class LevelCompleteScene extends Phaser.Scene {
     const timeString = minutes > 0
       ? `${minutes}m ${seconds}s`
       : `${seconds} seconds`;
+
+    // Cheese-wedge confetti raining down
+    this.add.particles(0, 0, 'cheese', {
+      x: { min: 0, max: width },
+      y: -20,
+      lifespan: 6000,
+      speedY: { min: 60, max: 140 },
+      speedX: { min: -30, max: 30 },
+      rotate: { min: 0, max: 360 },
+      scale: { min: 0.6, max: 1.2 },
+      frequency: 120
+    });
+
+    // Star confetti too - this is the big ending
+    this.add.particles(0, 0, 'star', {
+      x: { min: 0, max: width },
+      y: -20,
+      lifespan: 6000,
+      speedY: { min: 50, max: 120 },
+      speedX: { min: -30, max: 30 },
+      rotate: { min: 0, max: 360 },
+      scale: { min: 0.5, max: 1 },
+      frequency: 200
+    });
 
     // Big "You Win!" title
     const title = this.add.text(width / 2, height / 2 - 100, 'You Win!', {
@@ -145,7 +354,7 @@ export default class LevelCompleteScene extends Phaser.Scene {
     });
 
     // All levels completed text
-    this.add.text(width / 2, height / 2 - 30, 'All 5 levels completed!', {
+    this.add.text(width / 2, height / 2 - 30, `All ${this.totalLevels} levels completed!`, {
       fontSize: '28px',
       fontFamily: 'Arial',
       color: '#ffffff'
@@ -158,7 +367,7 @@ export default class LevelCompleteScene extends Phaser.Scene {
       color: '#aaddff'
     }).setOrigin(0.5);
 
-    this.add.text(width / 2, height / 2 + 55, `Bear catches: ${this.totalResets}`, {
+    this.add.text(width / 2, height / 2 + 55, `Times caught: ${this.totalResets}`, {
       fontSize: '22px',
       fontFamily: 'Arial',
       color: '#ffaaaa'
@@ -167,7 +376,7 @@ export default class LevelCompleteScene extends Phaser.Scene {
     // Rating based on resets
     let rating = '';
     if (this.totalResets === 0) {
-      rating = 'Perfect! No bears caught you!';
+      rating = 'Perfect! Nothing caught you!';
     } else if (this.totalResets <= 3) {
       rating = 'Great job!';
     } else if (this.totalResets <= 10) {
@@ -203,12 +412,65 @@ export default class LevelCompleteScene extends Phaser.Scene {
     });
 
     playAgainButton.on('pointerdown', () => {
-      this.scene.start('GameScene', { level: 0 });
+      this.scene.start('MenuScene');
     });
 
-    // Decorative elements
-    this.add.image(150, 150, 'cheese').setScale(1.5).setAngle(-20);
-    this.add.image(650, 450, 'cheese').setScale(1.5).setAngle(15);
-    this.add.image(100, 400, 'mouse').setScale(2);
+    // The mouse family pours out to celebrate
+    this.createMouseParade();
+
+    // The bears wave goodbye (no hard feelings)
+    this.createWavingBear(120, 160);
+    this.createWavingBear(680, 160);
+
+    // Penguin and walrus join the party
+    const penguin = this.add.image(150, 450, 'penguin').setScale(1.8);
+    this.tweens.add({
+      targets: penguin,
+      angle: { from: -15, to: 15 },
+      duration: 300,
+      yoyo: true,
+      repeat: -1
+    });
+    this.add.image(660, 460, 'walrus').setScale(1.2);
+  }
+
+  createMouseParade() {
+    const { width, height } = this.scale;
+
+    // A parade of mice (gray and brown) sliding across the bottom forever
+    for (let i = 0; i < 6; i++) {
+      const texture = i % 2 === 0 ? 'mouse' : 'mouse2';
+      const mouse = this.add.image(-40 - i * 70, height - 40, texture).setScale(1.5);
+
+      this.tweens.add({
+        targets: mouse,
+        x: width + 60,
+        duration: 4000,
+        delay: i * 300,
+        repeat: -1,
+        repeatDelay: 800,
+        ease: 'Linear'
+      });
+
+      this.tweens.add({
+        targets: mouse,
+        angle: { from: -12, to: 12 },
+        duration: 180,
+        yoyo: true,
+        repeat: -1
+      });
+    }
+  }
+
+  createWavingBear(x, y) {
+    const bear = this.add.image(x, y, 'polar-bear').setScale(1.5);
+    this.tweens.add({
+      targets: bear,
+      angle: { from: -8, to: 8 },
+      duration: 500,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut'
+    });
   }
 }
